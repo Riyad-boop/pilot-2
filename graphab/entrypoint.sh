@@ -1,3 +1,4 @@
+#!/bin/sh
 # to set directory with lulc files
 lulc_path="input/lulc"
 
