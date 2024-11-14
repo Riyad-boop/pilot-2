@@ -3,7 +3,7 @@ from osgeo import gdal, ogr
 import yaml
 import os
 from subprocess import Popen, PIPE
-
+import subprocess
 
 def load_yaml(path:str) -> dict:
         """
@@ -143,3 +143,31 @@ def find_stressor_params(config_dict:dict, search_key:str):
                 if stressor_params is not None:
                     return stressor_params
         return None 
+
+#NOTE: This function is not used in the current version of the code
+def run_shell_command(path_to_script:str) -> None:
+    """
+    Run a shell script command using subprocess.run
+
+    Args:
+        (path_to_script(str): The path to the shell script.
+    """
+    # run the shell script
+    command = f"bash {path_to_script}"
+
+    proc = Popen(command, shell=True, stdout=PIPE, stderr=PIPE)
+    stdout, stderr = proc.communicate()
+    print("Shell script executing ...")
+
+    if proc.returncode != 0:
+        #check if the output has syntax error
+        if b"syntax error" in stderr:
+            print("Syntax error in the shell script. \n Attempting to convert the shell script to Unix format.")
+            # convert the shell script to unix format
+            subprocess.run(f"dos2unix {path_to_script}", shell=True, text=True)
+            # run the command again
+            run_shell_command(path_to_script)
+        else:
+            raise subprocess.CalledProcessError(proc.returncode, command, output=stdout, stderr=stderr)
+    else:
+        print(stdout.decode('utf-8'))

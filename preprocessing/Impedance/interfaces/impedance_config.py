@@ -1,16 +1,20 @@
+import os
+import yaml
 from abc import ABC, abstractmethod
-import os 
-class ImpedanceConfigProcessor(ABC):
+
+class Impedance_config(ABC):
     
-    def __init__(self, config:dict, config_impedance:dict, params_placeholder:dict, impedance_stressors:dict, year:int, *args) -> None:
+    def __init__(self, config:dict, config_impedance:dict, params_placeholder:dict, impedance_stressors:dict, year:int, 
+        parent_dir:str, output_dir:str) -> None:
         super().__init__()
         self.config = config
         self.config_impedance = config_impedance
-        self.output_dir = os.path.normpath(self.config.get('output_dir'))
-        self.parent_dir = os.path(os.getcwd())
         self.params_placeholder = params_placeholder
         self.impedance_stressors = impedance_stressors
         self.year = year
+        self.parent_dir = parent_dir
+        self.output_dir = output_dir
+        
        
        
     @abstractmethod

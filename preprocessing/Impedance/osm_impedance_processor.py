@@ -1,19 +1,20 @@
-
-from utils import load_yaml
 from osgeo import gdal
 import os
 import copy
 import yaml
-from interfaces.ImpedanceConfigProcessor import ImpedanceConfigProcessor
 
-class Osm_impedance_processor(ImpedanceConfigProcessor):
+#Local imports
+from utils import load_yaml
+from interfaces.impedance_config import Impedance_config
+
+
+class Osm_impedance_processor(Impedance_config):
     def __init__(self, config_impedance:dict, config:dict, params_placeholder:dict, impedance_stressors:dict, year:int,
-            osm_stressor_path:str="stressors.yaml"
-        ):
+            parent_dir:str,output_dir:str,osm_stressor_path:str="stressors.yaml") -> None:
         """
         Initialize the Impedance class with the configuration file paths and other parameters.
         """
-        super().__init__(config, config_impedance, params_placeholder, impedance_stressors)
+        super().__init__(config, config_impedance, params_placeholder, impedance_stressors, year, parent_dir,output_dir)
 
         # additional directories
         self.vector_dir = self.config.get('vector_dir')
@@ -47,9 +48,14 @@ class Osm_impedance_processor(ImpedanceConfigProcessor):
         self.config_impedance = self.prepare_config_impendance_file(osm_stressors)
         # add the OSM stressors to the impedance configuration file
         for osm_stressor_feature,osm_feature_subtypes in osm_stressors.items():
-            for osm_feature_subtype in osm_feature_subtypes:
-                raster_path = os.path.normpath(os.path.join(self.parent_dir,self.output_dir,f'{osm_stressor_feature}_{osm_feature_subtype}_{year}.tif'))
-                self.impedance_stressors[osm_feature_subtype] = raster_path
+            if osm_feature_subtypes is not None:
+                for osm_feature_subtype in osm_feature_subtypes:
+                    raster_path = os.path.normpath(os.path.join(self.output_dir,f'{osm_stressor_feature}_{osm_feature_subtype}_{self.year}.tif'))
+                    self.impedance_stressors[osm_feature_subtype] = raster_path
+            # if there are no subtypes, add the feature itself
+            else:
+                raster_path = os.path.normpath(os.path.join(self.output_dir,f'{osm_stressor_feature}_{self.year}.tif'))
+                self.impedance_stressors[osm_stressor_feature] = raster_path
 
         return self.impedance_stressors, self.config_impedance
     
@@ -74,16 +80,15 @@ class Osm_impedance_processor(ImpedanceConfigProcessor):
   
         for osm_stressor_feature, osm_stressor_feature_subtypes in osm_stressors.items(): 
             print(f"Processing {osm_stressor_feature}...")
-
             # 1. create or update the key for each osm_stressor_feature in 'vector'
             if osm_stressor_feature not in vector:
                 vector[osm_stressor_feature] = {}  # initialize the osm_stressor_feature as an empty dictionary
                 
             # define the 'types' key for each osm_stressor as an empty dictionary (will be updated later)
-            vector[osm_stressor_feature]['types'] = {}  # initialize 'types' as an empty dictionary
+            vector[osm_stressor_feature]['types'] = None  # initialize 'types' with empty value
 
-            # check if the subtypes variable contains more than one object)
-            if len(osm_stressor_feature_subtypes) > 1:
+            # check if the subtypes variable is not empty (contains subtypes)
+            if osm_stressor_feature_subtypes is not None:
                 # update the types in the vector for the current osm_stressor
                 vector[osm_stressor_feature]['types'] = True # Update types with True
                 # loop through each subtype in the dynamic variable

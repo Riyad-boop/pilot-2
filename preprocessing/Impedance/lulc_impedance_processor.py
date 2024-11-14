@@ -5,11 +5,13 @@ import geopandas as gpd
 import numpy as np
 import copy
 from typing import Optional, Iterator
-from interfaces.ImpedanceConfigProcessor import ImpedanceConfigProcessor
 
-class Lulc_impedance_processor(ImpedanceConfigProcessor): 
+# local imports
+from interfaces.impedance_config import Impedance_config
 
-    def __init__(self, config_impedance:dict, config:dict, params_placeholder:dict, impedance_stressors:dict, year:int):
+class Lulc_impedance_processor(Impedance_config): 
+
+    def __init__(self, config_impedance:dict, config:dict, params_placeholder:dict, impedance_stressors:dict, year:int, parent_dir:str,output_dir:str) -> None:
         """
         Initialize the Impedance class with the configuration file paths and other parameters.
 
@@ -20,8 +22,7 @@ class Lulc_impedance_processor(ImpedanceConfigProcessor):
             config_path (str): The path to the main configuration file. Default is 'config.yaml'.
             config_impedance_path (str): The path to the impedance configuration file. Default is 'config_impedance.yaml'.
         """
-        super().__init__(config, config_impedance, params_placeholder, impedance_stressors)
-        self.year = year
+        super().__init__(config, config_impedance, params_placeholder, impedance_stressors, year,parent_dir,output_dir)
         # additional directories
         self.lulc_dir = self.config.get('lulc_dir')
         self.impedance_dir = self.config.get('impedance_dir')
@@ -37,7 +38,7 @@ class Lulc_impedance_processor(ImpedanceConfigProcessor):
             config_impedance (dict): The updated configuration file with the LULC stressors added.
         """
         # define the path to the LULC raster dataset
-        self.lulc_path = os.path.normpath(os.path.join(self.parent_dir,self.lulc_dir,self.get_lulc_template(self.year)))
+        self.lulc_path = os.path.normpath(os.path.join(self.lulc_dir,self.get_lulc_template(self.year)))
         self.lulc_properties = self.get_lulc_raster_properties(self.lulc_path)
         self.impedance_stressors = self.extract_lulc_stressors(self.year)
         return self.impedance_stressors, self.config_impedance
@@ -56,8 +57,7 @@ class Lulc_impedance_processor(ImpedanceConfigProcessor):
         """
         lulc_template = self.config.get('lulc', None)
         if lulc_template is None:
-            warnings.warn("LULC template is null or not found in the configuration file.")
-            return None
+            raise("LULC template is null or not found in the configuration file.")
         else:
             # NOTE: For now we are using the first year in the list of years
             lulc = lulc_template.format(year=year)
@@ -83,8 +83,8 @@ class Lulc_impedance_processor(ImpedanceConfigProcessor):
         lulc_properties['band_data_type'] = lulc_properties['band'].DataType
         lulc_properties['geotransform'] = lulc.GetGeoTransform()
         lulc_properties['projection'] = lulc.GetProjection()
-        lulc_properties["x_size"] = lulc.RasterXSize()
-        lulc_properties["y_size"] = lulc.RasterYSize()
+        lulc_properties["x_size"] = lulc.RasterXSize
+        lulc_properties["y_size"] = lulc.RasterYSize
 
         # close the raster dataset
         lulc = None
@@ -110,18 +110,20 @@ class Lulc_impedance_processor(ImpedanceConfigProcessor):
         else:
             warnings.warn("No valid auxiliary tabular data found. Impact from stressors will be estimated from vector features only.") # warning, not error because stressors might come from CSV file pointing out LULC categories and from OSM vector dataset (at least one source or both)
             return None
-        impedance_csv = os.path.join(self.parent_dir,self.impedance_dir,impedance) # define path
+        impedance_csv = os.path.join(self.impedance_dir,impedance) # define path
+        
         return gpd.read_file(impedance_csv) # read CSV file through geopandas as a dataframe
 
 
     
-    def extract_lulc_stressors(self, year:int) -> dict:
+    def extract_lulc_stressors(self, year:int, edge_effect_val:int = 1) -> dict:
         """
         Extracts the LULC types causing edge effect on habitats from the input CSV dataset.
         Each stressor is appended into the impedance configuration file as a separate entry and a masked raster file is created for each LULC code.
 
         Args:
             year (int): The year for which the edge effect is calculated.
+            edge_effect_val (int): The value in the 'edge_effect' column of the CSV file which indicates that the LULC code causes edge effect on habitats. Default is 1.
         Returns:
             impedance_stressors (dict): The dictionary of stressors with the LULC code as the key and the path to the raster file as the value.
         """
@@ -134,10 +136,9 @@ class Lulc_impedance_processor(ImpedanceConfigProcessor):
 
             # 2. check if the value in 'edge_effect' column is 1 - user specified that these LULC are affecting habitats
             impedance_df = self.load_impedance_data()
-            if impedance_df:
+            if impedance_df is not None:
                 # convert datatype of 'edge_effect' column into integer one if needed
                 impedance_df['edge_effect'] = impedance_df['edge_effect'].astype(int)
-                edge_effect_val = 1 #TODO remove and just hardcode 1 below?
                 edge_effect_list = impedance_df[impedance_df['edge_effect'] == edge_effect_val]['lulc'].tolist()
                 print (f"LULC type codes causing edge effect on habitats are: {edge_effect_list}")
                 print("-"*40)
@@ -145,7 +146,7 @@ class Lulc_impedance_processor(ImpedanceConfigProcessor):
                 # 3. iterate over each LULC code in edge_effect_list
                 for lulc_code, lulc_code_str in self.populate_initial_lulc(edge_effect_list,year,self.params_placeholder):
                     # 4. create a mask for the current LULC code
-                    self.mask_with_lulc_code(lulc_code, lulc_code_str)
+                    self.impedance_stressors = self.mask_with_lulc_code(lulc_code, lulc_code_str)
 
                 # 5. after processing all LULC codes, save the updated YAML configuration
                 self.config_impedance['initial_lulc'] = self.initial_lulc
@@ -213,7 +214,7 @@ class Lulc_impedance_processor(ImpedanceConfigProcessor):
             impedance_stressors (dict): The dictionary of stressors with the LULC code as the key and the path to the raster file as the value.
         """
         # 4. create a mask for the current LULC code
-        mask = (self.band_array == int(lulc_code))
+        mask = (self.lulc_properties['band_array'] == int(lulc_code))
         if np.any(mask):
             print(f"True values are present in the mask for LULC code: {lulc_code}.")
         else:
@@ -227,15 +228,15 @@ class Lulc_impedance_processor(ImpedanceConfigProcessor):
             print(f"Masked data contains only zeros or nodata values for LULC code: {lulc_code}.")
 
         #  create unique output raster path for each LULC code
-        output_raster_path = os.path.join(self.parent_dir, self.output_dir, f'{lulc_code_str}.tif')
+        output_raster_path = os.path.join(self.output_dir, f'{lulc_code_str}.tif')
         # APPEND outputs with stressors to the list
         self.impedance_stressors[lulc_code_str] = output_raster_path  # mapping stressor raster path to LULC code
 
         # create output raster file
         driver = gdal.GetDriverByName('GTiff')
         out_dataset = driver.Create(output_raster_path, self.lulc_properties["x_size"], self.lulc_properties["y_size"], 1, self.lulc_properties['band_data_type'])
-        out_dataset.SetGeoTransform(self.geotransform)
-        out_dataset.SetProjection(self.projection)
+        out_dataset.SetGeoTransform(self.lulc_properties['geotransform'])
+        out_dataset.SetProjection(self.lulc_properties['projection'])
 
         # write the masked data to the new raster file
         out_band = out_dataset.GetRasterBand(1)

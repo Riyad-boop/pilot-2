@@ -6,26 +6,25 @@ import numpy as np
 import copy
 from typing import Optional, Iterator
 
-# NOTE: this should be split into two classes: 
-# one for the configuration file setup (which can be in a Wrapper)
-# and one for the lulc stressor processor
-# then vector stressor processor
-
-from lulc_impedance_processor import Lulc_impedance_processor
-from osm_impedance_processor import Osm_impedance_processor
-from utils import save_yaml
+from preprocessing.Impedance.lulc_impedance_processor import Lulc_impedance_processor
+from preprocessing.Impedance.osm_impedance_processor import Osm_impedance_processor
 
 class Impedance_config_processor(): 
+    """
+    This class is responsible for processing the configuration file for the impedance dataset for the lulc and osm stressors
+    The lulc stressors are defined in the reclassification CSV file and the osm stressors are defined in the stressors.yaml file (from the 3rd notebook)
+    """
 
     def __init__(self, year:int, params_placeholder:dict, config:dict, config_impedance:dict):
         """
         Initialize the Impedance class with the configuration file paths and other parameters.
 
         Args:
+            year (int): The year for which the edge effect is calculated.
+            params_placeholder (dict): The dictionary template for the configuration YAML file (for each stressor).
             config_path (str): The path to the main configuration file. Default is 'config.yaml'.
             config_impedance_path (str): The path to the impedance configuration file. Default is 'config_impedance.yaml'.
-            params_placeholder (dict): The dictionary template for the configuration YAML file (for each stressor).
-            impedance_stressors_dict (dict): The dictionary for stressors, mapping stressor raster path to YAML alias.
+        
         Returns:
             None
         """
@@ -34,8 +33,10 @@ class Impedance_config_processor():
         self.config = config
         self.params_placeholder = params_placeholder
         self.year = year
+        self.config_impedance = config_impedance
         
         self.impedance_stressors = {} # initialize the dictionary for stressors, which contains mapping stressor raster path to YAML alias
+
         # TODO remove since it is called in wrapper
         # self.config_impedance = self.setup_config_impedance()
         # self.impedance_stressors = self.process_stressors()
@@ -61,13 +62,13 @@ class Impedance_config_processor():
 
         return self.config_impedance
     
-    def process_stressors(self):
+    def process_stressors(self, parent_dir:str, output_dir:str) -> dict:
         """
         Process the stressors for lulc and osm data
         """
-        lip = Lulc_impedance_processor(self.config, self.config_impedance, self.params_placeholder, self.impedance_stressors, self.year)
+        lip = Lulc_impedance_processor(self.config_impedance,self.config, self.params_placeholder, self.impedance_stressors, self.year, parent_dir, output_dir)
         self.impedance_stressors, self.config_impedance = lip.update_impedance_config()
-        oip = Osm_impedance_processor(self.config, self.config_impedance, self.params_placeholder, self.impedance_stressors, self.year)
+        oip = Osm_impedance_processor(self.config_impedance, self.config, self.params_placeholder, self.impedance_stressors, self.year, parent_dir, output_dir)
         self.impedance_stressors, self.config_impedance = oip.update_impedance_config()
 
         return self.impedance_stressors, self.config_impedance
